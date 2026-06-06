@@ -1,0 +1,24 @@
+# Core
+python-dateutil>=2.9.0      # relativedelta for reliable month arithmetic
+streamlit>=1.35.0           # UI framework
+
+# Data
+sqlalchemy>=2.0.0           # SQLite ORM
+pandas>=2.2.0               # DataFrames for display
+
+# AI (added in V3)
+anthropic>=0.28.0           # Claude API
+
+# RAG (added in V4)
+chromadb>=0.5.0             # Local vector database
+sentence-transformers>=3.0.0  # Embeddings
+
+# Charts
+plotly>=5.22.0              # Interactive charts in Streamlit
+
+# Config
+python-dotenv>=1.0.0        # .env file support
+
+# Testing
+pytest>=8.2.0
+pytest-approx               # Bundled with pytest — for float comparisons
