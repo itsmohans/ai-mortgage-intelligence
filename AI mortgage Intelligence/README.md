@@ -1,5 +1,10 @@
 # 🏠 AI Mortgage Intelligence
 
+[![GitHub](https://img.shields.io/badge/GitHub-itsmohans%2Fai--mortgage--intelligence-blue?logo=github)](https://github.com/itsmohans/ai-mortgage-intelligence)
+![Python](https://img.shields.io/badge/Python-3.11+-blue?logo=python)
+![Streamlit](https://img.shields.io/badge/Streamlit-1.35+-red?logo=streamlit)
+![License](https://img.shields.io/badge/License-MIT-green)
+
 A personal mortgage decision-support tool built with **Python**, **Streamlit**, and the **Claude AI API**. It takes your exact mortgage data as inputs through the UI, runs all calculations in code, and gives you a clear, interactive view of your mortgage — past, present, and future.
 
 ---
