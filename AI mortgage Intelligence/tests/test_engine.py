@@ -65,7 +65,7 @@ def _full_term_mortgage(principal="100000.00", rate="0.04", years=10,
     )
 
 
-def _short_term_mortgage(principal="420880.00", rate="0.0389",
+def _short_term_mortgage(principal="500000.00", rate="0.0389",
                          amort_years=30, term_years=3):
     """Realistic mortgage where term < amortization; balance carries forward."""
     start = date(2026, 7, 21)
@@ -92,8 +92,8 @@ class TestCalculateMonthlyPayment:
 
     def test_known_value_range(self):
         pmt = calculate_monthly_payment(
-            Decimal("420880.00"), Decimal("0.0389"), 298)
-        assert Decimal("1800") < pmt < Decimal("2500")
+            Decimal("500000.00"), Decimal("0.0389"), 298)
+        assert Decimal("2000") < pmt < Decimal("3000")
 
     def test_zero_rate(self):
         pmt = calculate_monthly_payment(
@@ -132,7 +132,7 @@ class TestRemainingAmortizationMonths:
 
     def _m(self):
         return Mortgage(
-            original_principal=Decimal("420880"),
+            original_principal=Decimal("500000"),
             start_date=date(2021, 5, 21),
             amortization_years=30,
             prepayment_limit_pct=Decimal("0.20"),
@@ -156,7 +156,7 @@ class TestGenerateSchedule:
     def test_opening_balance_equals_principal(self):
         m   = _short_term_mortgage()
         sch = generate_schedule(m)
-        assert sch.payments[0].balance_opening == Decimal("420880.00")
+        assert sch.payments[0].balance_opening == Decimal("500000.00")
 
     def test_no_negative_balance(self):
         m   = _full_term_mortgage()
@@ -261,7 +261,7 @@ class TestPrepayments:
 
     def test_annual_prepayment_limit(self):
         m = _short_term_mortgage()
-        assert m.annual_prepayment_limit == Decimal("84176.00")
+        assert m.annual_prepayment_limit == Decimal("100000.00")
 
     def test_one_time_prepayment_applied_once(self):
         prepay = PrepaymentEvent(
@@ -382,7 +382,7 @@ class TestVariableRateTerm:
             )],
         )
         return Mortgage(
-            original_principal=Decimal("420880.00"), start_date=start,
+            original_principal=Decimal("500000.00"), start_date=start,
             amortization_years=30, prepayment_limit_pct=Decimal("0.20"),
             payment_day=21, terms=[term],
         )
@@ -427,7 +427,7 @@ class TestVariableRateTerm:
             monthly_payment=Decimal("1863.49"),
         )
         m   = Mortgage(
-            original_principal=Decimal("420880.00"), start_date=start1,
+            original_principal=Decimal("500000.00"), start_date=start1,
             amortization_years=30, prepayment_limit_pct=Decimal("0.20"),
             payment_day=21, terms=[term1, term2],
         )

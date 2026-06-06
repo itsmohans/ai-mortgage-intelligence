@@ -97,11 +97,11 @@ def _make_mortgage() -> Mortgage:
     )
 
     return Mortgage(
-        original_principal=Decimal("420880.00"),
+        original_principal=Decimal("500000.00"),
         start_date=date(2021, 5, 21),
         amortization_years=30,
         prepayment_limit_pct=Decimal("0.20"),
-        lender="First National",
+        lender="Sample Lender",
         payment_day=21,
         terms=[term1, term2],
     )
@@ -143,7 +143,7 @@ class TestMortgageFields:
         self.m    = repo.load_mortgage(self.mid)
 
     def test_original_principal(self):
-        assert self.m.original_principal == Decimal("420880.00")
+        assert self.m.original_principal == Decimal("500000.00")
         assert isinstance(self.m.original_principal, Decimal)
 
     def test_start_date(self):
@@ -157,7 +157,7 @@ class TestMortgageFields:
         assert self.m.prepayment_limit_pct == Decimal("0.20")
 
     def test_lender(self):
-        assert self.m.lender == "First National"
+        assert self.m.lender == "Sample Lender"
 
     def test_payment_day(self):
         assert self.m.payment_day == 21

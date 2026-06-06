@@ -66,7 +66,7 @@ with tab_mortgage:
             principal = st.number_input(
                 "Original Principal ($)",
                 min_value=10_000.0, max_value=5_000_000.0,
-                value=float(existing.original_principal) if existing else 420_880.0,
+                value=float(existing.original_principal) if existing else 500_000.0,
                 step=1000.0, format="%.2f",
                 help="The amount you borrowed on your mortgage start date.",
             )
@@ -88,7 +88,7 @@ with tab_mortgage:
         with col2:
             start_date = st.date_input(
                 "Mortgage Start Date",
-                value=existing.start_date if existing else date(2021, 5, 21),
+                value=existing.start_date if existing else date(2023, 1, 1),
                 help="The disbursement date — the day you received the funds.",
             )
             lender = st.text_input(
@@ -99,7 +99,7 @@ with tab_mortgage:
             payment_day = st.number_input(
                 "Monthly Payment Day",
                 min_value=1, max_value=28,
-                value=existing.payment_day if existing else 21,
+                value=existing.payment_day if existing else 1,
                 step=1,
                 help="Day of the month on which payments are due (1–28).",
             )
