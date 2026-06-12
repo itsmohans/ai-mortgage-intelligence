@@ -61,6 +61,7 @@ mortgage_terms = sa.Table(
     sa.Column("rate_type",           sa.Text,    nullable=False),   # "variable" | "fixed"
     sa.Column("initial_annual_rate", sa.Text,    nullable=False),   # Decimal as string
     sa.Column("monthly_payment",     sa.Text,    nullable=False),   # Decimal as string
+    sa.Column("first_payment_date",  sa.Text,    nullable=True),    # YYYY-MM-DD or NULL
     sa.Column("created_at",          sa.Text,    nullable=False),
 )
 
@@ -135,10 +136,38 @@ def get_engine(url: str | None = None) -> sa.Engine:
     # Create tables if they do not yet exist.
     metadata.create_all(engine)
 
+    # Run incremental migrations for columns added after initial release.
+    _migrate(engine)
+
     if "memory" not in url:
         _engine = engine
 
     return engine
+
+
+def _migrate(engine: sa.Engine) -> None:
+    """
+    Apply schema migrations that cannot be expressed via create_all()
+    (which only creates missing tables, not missing columns).
+
+    Each migration is guarded by a column-existence check so it is safe
+    to run on every startup — it is a no-op after the first application.
+    """
+    with engine.begin() as conn:
+        # ── Migration 1: add first_payment_date to mortgage_terms ────────────
+        existing = {
+            row[1]  # column name is index 1 in PRAGMA table_info rows
+            for row in conn.execute(
+                sa.text("PRAGMA table_info(mortgage_terms)")
+            ).fetchall()
+        }
+        if "first_payment_date" not in existing:
+            conn.execute(
+                sa.text(
+                    "ALTER TABLE mortgage_terms "
+                    "ADD COLUMN first_payment_date TEXT"
+                )
+            )
 
 
 def reset_engine() -> None:

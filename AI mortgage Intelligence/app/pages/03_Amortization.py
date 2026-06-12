@@ -81,7 +81,12 @@ for p in filtered:
         "#":          p.period_number,
         "Term":       p.term_number,
         "Date":       p.payment_date,
-        "Status":     "Actual" if p.is_historical else "Projected",
+        "Status":     (
+            "Interest Adj."  if getattr(p, "is_interest_adjustment", False)
+            else "Capitalized" if getattr(p, "is_capitalization", False)
+            else "Actual"      if p.is_historical
+            else "Projected"
+        ),
         "Bal. Open":  float(p.balance_opening),
         "Payment":    float(p.regular_payment),
         "Prepayment": float(p.prepayment),
@@ -99,10 +104,19 @@ df = pd.DataFrame(rows)
 # ─────────────────────────────────────────────────────────────────────────────
 HIST_BG  = "#EEF5EE"   # soft green — historical (actual)
 PROJ_BG  = "#EEF2F8"   # soft blue — projected
+ADJ_BG   = "#FFF8E7"   # soft amber — interest adjustment (balance unchanged)
+CAP_BG   = "#FEF0E6"   # soft orange — capitalised interest (balance grows)
 NEG_FG   = "#C0392B"   # red for negative principal (balance growing)
 
 def _style(row):
-    bg = HIST_BG if row["Status"] == "Actual" else PROJ_BG
+    if row["Status"] == "Interest Adj.":
+        bg = ADJ_BG
+    elif row["Status"] == "Capitalized":
+        bg = CAP_BG
+    elif row["Status"] == "Actual":
+        bg = HIST_BG
+    else:
+        bg = PROJ_BG
     # Explicitly set text colour so it's readable in both light and dark mode
     base = f"background-color: {bg}; color: #111111"
     styles = [base] * len(row)
@@ -162,8 +176,9 @@ st.download_button(
 # ─────────────────────────────────────────────────────────────────────────────
 with st.expander("Legend"):
     st.markdown(f"""
+- 🟡 **Amber rows** — Interest adjustment period (partial month at disbursement). Balance unchanged — interest collected separately at closing.
+- 🟠 **Orange rows** — Capitalised interest period (no payment collected; interest added to balance).
 - 🟢 **Green rows** — Actual historical payments (date < today)
 - 🔵 **Blue rows** — Projected future payments
-- 🔴 **Red Principal** — Month where interest exceeded the payment
-  (balance was growing — occurred in early Term 1 at low rates)
+- 🔴 **Red Principal** — Month where interest exceeded the payment (balance was growing)
     """)

@@ -28,7 +28,7 @@ from mortgage.models.entities import (
     MortgageTerm,
     PrepaymentEvent,
 )
-from mortgage.engine.amortization import generate_schedule
+from mortgage.engine.amortization import generate_schedule, true_payoff
 
 _ZERO = Decimal("0.00")
 _CENT = Decimal("0.01")
@@ -148,6 +148,7 @@ def prepayment_impact(
     # ── Baseline schedule ────────────────────────────────────────────────────
     baseline = generate_schedule(mortgage)
     baseline_summary = baseline.lifetime_summary
+    baseline_payoff_date, baseline_payoff_month = true_payoff(baseline)
 
     # ── Build modified mortgage with extra prepayment ────────────────────────
     # Find the term that contains this date
@@ -176,27 +177,28 @@ def prepayment_impact(
     # ── Modified schedule ────────────────────────────────────────────────────
     modified = generate_schedule(modified_mortgage)
     modified_summary = modified.lifetime_summary
+    new_payoff_date, new_payoff_month = true_payoff(modified)
 
     interest_saved = _round(baseline_summary.total_interest - modified_summary.total_interest)
-    months_saved   = baseline_summary.payoff_month - modified_summary.payoff_month
+    months_saved   = baseline_payoff_month - new_payoff_month
 
     # Annualised return: how many years until payoff?
     years_remaining = max(
         Decimal("0.01"),
         Decimal(str(months_saved / 12)) if months_saved > 0
-        else Decimal(str(baseline_summary.payoff_month / 12))
+        else Decimal(str(baseline_payoff_month / 12))
     )
     effective_return = _round(interest_saved / lump_sum / years_remaining) if lump_sum > _ZERO else _ZERO
 
     return PrepaymentImpact(
         prepayment_amount        = lump_sum,
         applied_on               = applied_on,
-        baseline_payoff_date     = baseline_summary.payoff_date,
+        baseline_payoff_date     = baseline_payoff_date,
         baseline_total_interest  = baseline_summary.total_interest,
-        baseline_payoff_month    = baseline_summary.payoff_month,
-        new_payoff_date          = modified_summary.payoff_date,
+        baseline_payoff_month    = baseline_payoff_month,
+        new_payoff_date          = new_payoff_date,
         new_total_interest       = modified_summary.total_interest,
-        new_payoff_month         = modified_summary.payoff_month,
+        new_payoff_month         = new_payoff_month,
         interest_saved           = interest_saved,
         months_saved             = months_saved,
         effective_annual_return  = effective_return,
@@ -236,6 +238,7 @@ def payment_increase_impact(
     """
     baseline = generate_schedule(mortgage)
     baseline_summary = baseline.lifetime_summary
+    baseline_payoff_date, baseline_payoff_month = true_payoff(baseline)
 
     target_term_idx = None
     for i, term in enumerate(mortgage.terms):
@@ -271,16 +274,17 @@ def payment_increase_impact(
 
     modified = generate_schedule(modified_mortgage)
     modified_summary = modified.lifetime_summary
+    new_payoff_date, new_payoff_month = true_payoff(modified)
 
     interest_saved = _round(baseline_summary.total_interest - modified_summary.total_interest)
-    months_saved   = baseline_summary.payoff_month - modified_summary.payoff_month
+    months_saved   = baseline_payoff_month - new_payoff_month
 
     return PaymentIncreaseImpact(
         additional_monthly       = additional_monthly,
         effective_from           = effective_from,
-        baseline_payoff_date     = baseline_summary.payoff_date,
+        baseline_payoff_date     = baseline_payoff_date,
         baseline_total_interest  = baseline_summary.total_interest,
-        new_payoff_date          = modified_summary.payoff_date,
+        new_payoff_date          = new_payoff_date,
         new_total_interest       = modified_summary.total_interest,
         interest_saved           = interest_saved,
         months_saved             = months_saved,

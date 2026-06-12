@@ -58,25 +58,34 @@ def calculate_monthly_payment(
     principal: Decimal,
     annual_rate: Decimal,
     remaining_amortization_months: int,
+    compounding: str = "semi_annual",
 ) -> Decimal:
     """
-    Calculate the monthly payment using Canadian mortgage convention
-    (semi-annual compounding, Interest Act of Canada).
+    Calculate the monthly payment for a Canadian mortgage.
 
     Parameters
     ----------
     principal                    : Outstanding balance at renewal.
     annual_rate                  : New annual interest rate (e.g. Decimal("0.0389")).
     remaining_amortization_months: Months remaining in the total amortization period.
+    compounding                  : Monthly rate convention:
+                                   "semi_annual" (default) — Canadian Interest Act standard.
+                                       monthly_rate = (1 + annual_rate/2)^(1/6) - 1
+                                   "monthly_simple" — rate/12, as used by some lenders
+                                       for the PMT calculation (daily interest accrual
+                                       still uses Actual/365).
 
     Returns
     -------
     Monthly payment amount, rounded to the nearest cent.
 
-    Edge cases
-    ----------
-    * Zero rate: payment = principal / n (pure principal repayment, no interest).
-    * n = 0   : raises ValueError (mortgage already paid off).
+    Note on the $0.80 discrepancy
+    ------------------------------
+    Many Canadian lenders compute the payment with rate/12 ("monthly_simple") even
+    though the Interest Act mandates semi-annual compounding for the interest rate
+    definition. The difference is small (~$0.80 on a $420k mortgage at 1.39%) but
+    causes a mismatch if you compare against a bank-issued amortization statement.
+    Use compounding="monthly_simple" when you want to reproduce your bank's figure.
     """
     if remaining_amortization_months <= 0:
         raise ValueError(
@@ -85,14 +94,15 @@ def calculate_monthly_payment(
         )
 
     if annual_rate == _ZERO:
-        # No interest — divide principal evenly
         return _round(principal / Decimal(remaining_amortization_months))
 
-    # Canadian semi-annual compounding → effective monthly rate
-    semi_annual_rate = float(annual_rate) / 2.0
-    monthly_rate     = fpow(1.0 + semi_annual_rate, 1.0 / 6.0) - 1.0
+    r = float(annual_rate)
+    if compounding == "monthly_simple":
+        monthly_rate = r / 12.0
+    else:
+        # Canadian semi-annual compounding (default)
+        monthly_rate = fpow(1.0 + r / 2.0, 1.0 / 6.0) - 1.0
 
-    # Standard PMT formula
     n   = remaining_amortization_months
     pmt = float(principal) * monthly_rate / (1.0 - fpow(1.0 + monthly_rate, -n))
 

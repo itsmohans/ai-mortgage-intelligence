@@ -113,6 +113,12 @@ class MortgageTerm:
     monthly_payment:     Decimal
     mortgage_id:         Optional[int] = None
     id:                  Optional[int] = None
+    # When disbursement is mid-month and the lender defers the first payment
+    # by one extra month (common in Canada), interest in the gap month is
+    # capitalised (added to balance, no payment collected).
+    # Set this to the actual first regular payment date to model that correctly.
+    # None = first payment is the first computed date (default behaviour).
+    first_payment_date:  Optional[date] = None
 
     # Populated by the repository after loading from DB
     rate_changes:  list[RateChangeEvent]  = field(default_factory=list)
@@ -207,9 +213,11 @@ class MonthlyPayment:
     interest_amount:  Decimal
     regular_payment:  Decimal
     prepayment:       Decimal
-    principal_repaid: Decimal
-    balance_closing:  Decimal
-    is_historical:    bool
+    principal_repaid:       Decimal
+    balance_closing:        Decimal
+    is_historical:          bool
+    is_interest_adjustment: bool = False  # True for the stub period at disbursement (balance unchanged)
+    is_capitalization:      bool = False  # True for months where interest accrues but no payment is made (balance increases)
 
 
 @dataclass

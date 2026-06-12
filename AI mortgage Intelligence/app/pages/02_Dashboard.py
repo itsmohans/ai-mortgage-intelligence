@@ -25,9 +25,10 @@ import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 from app.state import get_schedule, has_mortgage
-from mortgage.engine.amortization import generate_schedule
+from mortgage.engine.amortization import generate_schedule, true_payoff
 from mortgage.engine.analytics import balance_at_date
 from mortgage.engine.renewal import compare_renewal_options
+
 
 st.set_page_config(page_title="Dashboard | Mortgage Intelligence", page_icon="📊", layout="wide")
 st.title("📊 Dashboard")
@@ -99,13 +100,16 @@ try:
     equity_built  = m.original_principal - today_balance
     pct_paid      = float(equity_built / m.original_principal * 100) if m.original_principal else 0.0
 
+    payoff_date, payoff_month = true_payoff(schedule)
+
     m_no_prep = copy.deepcopy(m)
     for term in m_no_prep.terms:
         term.prepayments = []
     sched_no_prep  = generate_schedule(m_no_prep)
     ls_no_prep     = sched_no_prep.lifetime_summary
     interest_saved = float(ls_no_prep.total_interest) - float(ls.total_interest)
-    months_saved   = ls_no_prep.payoff_month - ls.payoff_month
+    _, payoff_month_no_prep = true_payoff(sched_no_prep)
+    months_saved   = payoff_month_no_prep - payoff_month
 
     ann = {}
     for p in all_p:
@@ -123,12 +127,12 @@ try:
     c1.metric("Original Principal",  f"${float(m.original_principal):,.0f}")
     c2.metric("Outstanding Balance",  f"${float(today_balance):,.0f}",
               delta=f"-${float(equity_built):,.0f} paid", delta_color="inverse")
-    c3.metric("Projected Payoff",     ls.payoff_date.strftime("%b %Y"),
-              delta=f"{ls.payoff_month} payments total", delta_color="off")
+    c3.metric("Projected Payoff",     payoff_date.strftime("%b %Y"),
+              delta=f"{payoff_month} payments total", delta_color="off")
     c4.metric("Lifetime Interest",    f"${float(ls.total_interest):,.0f}",
               delta=f"{float(ls.net_interest_pct)*100:.1f}% of principal", delta_color="off")
     c5.metric("Total Prepayments",    f"${float(ls.total_prepayments):,.0f}")
-    c6.metric("Avg Interest Rate",    f"{float(ls.weighted_avg_rate)*100:.2f}%")
+    c6.metric("Wtd. Avg Rate",         f"{float(ls.weighted_avg_rate)*100:.2f}%")
     st.divider()
 
     # ═══════════════════ SECTION A — BALANCE & EQUITY ═══════════════════════
@@ -473,7 +477,7 @@ try:
                 "Interest Paid":    f"${float(ts.interest_paid):,.2f}",
                 "Prepayments":      f"${float(ts.total_prepayments):,.2f}",
                 "Total Paid":       f"${float(ts.total_repayments):,.2f}",
-                "Avg Rate":         f"{float(ts.avg_weighted_rate)*100:.2f}%",
+                "Wtd. Avg Rate":    f"{float(ts.avg_weighted_rate)*100:.2f}%",
                 "Payments":         str(ts.payment_count),
             })
         st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)

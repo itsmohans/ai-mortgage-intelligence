@@ -244,6 +244,7 @@ class MortgageRepository:
                     rate_type           = term.rate_type,
                     initial_annual_rate = str(term.initial_annual_rate),
                     monthly_payment     = str(term.monthly_payment),
+                    first_payment_date  = term.first_payment_date.isoformat() if term.first_payment_date else None,
                 )
             )
 
@@ -353,6 +354,7 @@ class MortgageRepository:
                 rate_type           = term.rate_type,
                 initial_annual_rate = str(term.initial_annual_rate),
                 monthly_payment     = str(term.monthly_payment),
+                first_payment_date  = term.first_payment_date.isoformat() if term.first_payment_date else None,
                 created_at          = _now(),
             )
         )
@@ -428,6 +430,7 @@ class MortgageRepository:
                 rate_type           = row.rate_type,
                 initial_annual_rate = Decimal(row.initial_annual_rate),
                 monthly_payment     = Decimal(row.monthly_payment),
+                first_payment_date  = date.fromisoformat(row.first_payment_date) if getattr(row, "first_payment_date", None) else None,
                 rate_changes=[
                     RateChangeEvent(
                         id              = r.id,

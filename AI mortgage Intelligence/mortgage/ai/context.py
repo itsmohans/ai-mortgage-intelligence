@@ -10,14 +10,13 @@ from __future__ import annotations
 
 from datetime import date
 from decimal import Decimal
-
 from mortgage.engine.analytics import (
     balance_at_date,
     prepayment_remaining_this_year,
     prepayment_used_this_year,
     ytd_summary,
 )
-from mortgage.engine.amortization import generate_schedule
+from mortgage.engine.amortization import generate_schedule, true_payoff
 from mortgage.models.entities import AmortizationSchedule, Mortgage
 
 
@@ -29,6 +28,7 @@ def build_mortgage_context(schedule: AmortizationSchedule) -> str:
     m     = schedule.mortgage
     ls    = schedule.lifetime_summary
     today = date.today()
+    payoff_date, payoff_month = true_payoff(schedule)
 
     hist  = [p for p in schedule.payments if p.is_historical]
     today_bal   = next((p.balance_closing for p in reversed(hist)), m.original_principal)
@@ -113,7 +113,7 @@ CURRENT STATUS
   Today's date:        {today}
   Outstanding balance: ${float(today_bal):,.2f}
   Equity built:        ${float(equity_built):,.2f} ({pct_paid:.1f}% paid off)
-  Projected payoff:    {ls.payoff_date.strftime('%B %Y')} (payment #{ls.payoff_month})
+  Projected payoff:    {payoff_date.strftime('%B %Y')} (payment #{payoff_month})
 
 LIFETIME PROJECTIONS (based on current terms and prepayments)
   Total interest:      ${float(ls.total_interest):,.2f}

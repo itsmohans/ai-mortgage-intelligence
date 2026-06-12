@@ -8,6 +8,7 @@ import streamlit as st
 from decimal import Decimal
 
 from app.state import get_schedule, has_mortgage
+from mortgage.engine.amortization import true_payoff
 
 st.set_page_config(
     page_title="Mortgage Intelligence",
@@ -30,6 +31,7 @@ if schedule is None:
 
 ls = schedule.lifetime_summary
 m  = schedule.mortgage
+payoff_date, _ = true_payoff(schedule)
 
 # Current balance = closing balance of most recent historical payment
 today_balance = next(
@@ -52,7 +54,7 @@ col2.metric(
 )
 col3.metric(
     "Projected Payoff",
-    ls.payoff_date.strftime("%b %Y"),
+    payoff_date.strftime("%b %Y"),
 )
 col4.metric(
     "Lifetime Interest",

@@ -201,16 +201,100 @@ def _generate_term_payments(
 
     prepayment_lookup = _build_prepayment_lookup(term, payment_dates)
 
-    # ── Walk through each payment date ─────────────────────────────────────
+    # ── Interest adjustment period ─────────────────────────────────────────
+    # When the disbursement date (term.start_date) differs from the first
+    # payment date (e.g. disbursed May 21, first payment June 1), the bank
+    # collects the partial-month interest separately before regular payments
+    # begin. We model this as a special Period 0 row.
     payments: list[MonthlyPayment] = []
-    balance          = opening_balance
-    prev_date        = term.start_date   # the "last event" date for day counting
+    balance   = opening_balance
+    first_pd  = payment_dates[0] if payment_dates else None
 
-    for i, pd in enumerate(payment_dates):
+    has_adjustment = first_pd and term.start_date < first_pd
+
+    # Determine where regular payments actually begin.
+    # If first_payment_date is set and is later than first_pd, gap months have
+    # interest capitalised (added to balance, no payment collected).
+    actual_first_payment = term.first_payment_date if term.first_payment_date else first_pd
+
+    if has_adjustment:
+        adj_days     = (first_pd - term.start_date).days
+        adj_rate     = _rate_for_date(rate_lookup, term.start_date)
+        adj_interest = _round(balance * (adj_rate / _365) * Decimal(adj_days))
+        payments.append(MonthlyPayment(
+            period_number          = period_offset,
+            term_number            = term.term_number,
+            payment_date           = term.start_date,
+            balance_opening        = balance,
+            annual_rate            = adj_rate,
+            days_in_period         = adj_days,
+            interest_amount        = adj_interest,
+            regular_payment        = _ZERO,
+            prepayment             = _ZERO,
+            principal_repaid       = _ZERO,
+            balance_closing        = balance,
+            is_historical          = term.start_date < _TODAY,
+            is_interest_adjustment = True,
+        ))
+        cap_start     = first_pd
+        prev_date     = actual_first_payment
+        regular_dates = [d for d in payment_dates if d >= actual_first_payment]
+    else:
+        cap_start     = None
+        prev_date     = term.start_date
+        regular_dates = payment_dates
+
+    # ── Capitalised interest rows ─────────────────────────────────────────────
+    # When first_payment_date is set beyond first_pd, each month in the gap
+    # accrues interest that is added to the balance (no payment, balance grows).
+    # Example: disbursed May 21 → adjustment May 21–Jun 1 → June capitalised
+    # → first real payment July 1.
+    if cap_start and actual_first_payment and cap_start < actual_first_payment:
+        cap_cursor  = cap_start
+        cap_period  = period_offset + 1
+        while cap_cursor < actual_first_payment:
+            cap_next = _next_payment_date(cap_cursor, payment_day)
+            if cap_next > actual_first_payment:
+                cap_next = actual_first_payment
+            cap_days = (cap_next - cap_cursor).days
+            cap_rate = _rate_for_date(rate_lookup, cap_cursor)
+            cap_int  = _round(balance * (cap_rate / _365) * Decimal(cap_days))
+            balance += cap_int          # interest capitalises into principal
+            payments.append(MonthlyPayment(
+                period_number     = cap_period,
+                term_number       = term.term_number,
+                payment_date      = cap_cursor,
+                balance_opening   = balance - cap_int,
+                annual_rate       = cap_rate,
+                days_in_period    = cap_days,
+                interest_amount   = cap_int,
+                regular_payment   = _ZERO,
+                prepayment        = _ZERO,
+                principal_repaid  = _round(-cap_int),  # negative: balance grew
+                balance_closing   = balance,
+                is_historical     = cap_cursor < _TODAY,
+                is_capitalization = True,
+            ))
+            cap_cursor  = cap_next
+            cap_period += 1
+        # Shift offset so regular payments number correctly
+        period_offset = cap_period - 1
+
+    # Flag: the first regular payment after a capitalisation block is forward-looking.
+    # (prev_date == pd, so pd - prev_date = 0 days; instead count pd → next_pd.)
+    _first_after_cap = (cap_start is not None and actual_first_payment is not None
+                        and cap_start < actual_first_payment)
+
+    for i, pd in enumerate(regular_dates):
         if balance <= _ZERO:
             break
 
-        days_in_period = (pd - prev_date).days
+        if _first_after_cap and i == 0:
+            # First regular payment sits on the same date as cap_end, so
+            # backward diff is 0.  Count forward to the next payment date instead.
+            days_in_period   = (_next_payment_date(pd, payment_day) - pd).days
+        else:
+            days_in_period = (pd - prev_date).days
         annual_rate    = _rate_for_date(rate_lookup, pd)
         prepayment     = prepayment_lookup.get(pd, _ZERO)
 
@@ -327,6 +411,44 @@ def _compute_lifetime_summary(
 # ─────────────────────────────────────────────────────────────────────────────
 # Public API
 # ─────────────────────────────────────────────────────────────────────────────
+
+def true_payoff(sched: "AmortizationSchedule") -> tuple["date", int]:
+    """
+    Return the true (payoff_date, total_payment_count) for a schedule.
+
+    generate_schedule() only covers configured terms. If the last payment still
+    has a non-zero balance (user hasn't entered future renewal terms yet), this
+    function projects forward using the last known annual rate and monthly payment
+    to find the actual mortgage-free date.
+    """
+    from datetime import date as _date
+    from dateutil.relativedelta import relativedelta
+
+    last  = sched.payments[-1]
+    _CENT = Decimal("0.01")
+
+    if last.balance_closing <= _CENT:
+        return sched.lifetime_summary.payoff_date, sched.lifetime_summary.payoff_month
+
+    balance      = last.balance_closing
+    annual_rate  = last.annual_rate
+    # Canadian semi-annual compounding → effective monthly rate
+    monthly_rate = (1 + annual_rate / Decimal("2")) ** (Decimal("1") / Decimal("6")) - 1
+    pmt          = sched.mortgage.terms[-1].monthly_payment
+    cursor       = last.payment_date
+    months       = 0
+
+    while balance > _CENT and months < 600:
+        interest  = (balance * monthly_rate).quantize(_CENT)
+        principal = pmt - interest
+        if principal <= _CENT:
+            break
+        balance  -= principal
+        months   += 1
+        cursor    = cursor + relativedelta(months=1)
+
+    return cursor, last.period_number + months
+
 
 def generate_schedule(mortgage: Mortgage) -> AmortizationSchedule:
     """

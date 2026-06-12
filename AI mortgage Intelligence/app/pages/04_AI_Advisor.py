@@ -21,6 +21,7 @@ from dotenv import load_dotenv
 
 from app.state import get_schedule, has_mortgage
 from mortgage.ai.context import build_mortgage_context
+from mortgage.ai.retrieval import retrieve, retrieve_chunks_metadata, is_ready as rag_is_ready
 from mortgage.engine.analytics import balance_at_date, prepayment_impact, payment_increase_impact
 from mortgage.engine.renewal import compare_renewal_options
 
@@ -218,10 +219,27 @@ def _run_tool(name: str, inputs: dict) -> str:
         return f"Tool error ({name}): {e}"
 
 # ─────────────────────────────────────────────────────────────────────────────
-# System prompt
+# RAG status indicator (initialise once per session)
 # ─────────────────────────────────────────────────────────────────────────────
-def _system_prompt() -> str:
+if "rag_initialised" not in st.session_state:
+    rag_ok, rag_err = rag_is_ready()
+    st.session_state["rag_initialised"] = True
+    st.session_state["rag_ok"]  = rag_ok
+    st.session_state["rag_err"] = rag_err
+
+# ─────────────────────────────────────────────────────────────────────────────
+# System prompt  (query-aware: injects RAG chunks relevant to the latest msg)
+# ─────────────────────────────────────────────────────────────────────────────
+def _system_prompt(latest_query: str = "") -> str:
     context = build_mortgage_context(schedule)
+
+    # Retrieve relevant knowledge chunks for the current query
+    rag_section = ""
+    if latest_query and st.session_state.get("rag_ok"):
+        rag_section = retrieve(latest_query)
+        if rag_section:
+            rag_section = f"\n\n{rag_section}"
+
     return f"""You are an expert Canadian mortgage advisor embedded in a personal mortgage intelligence app. \
 You have access to the homeowner's complete mortgage data, which is provided below. \
 Your job is to answer questions accurately, run financial scenarios on request, and proactively \
@@ -240,8 +258,10 @@ tell them how much capacity they have left this year.
 consulting a mortgage broker for major decisions.
 - Format numbers with dollar signs and commas. Keep responses concise but complete.
 - Today's date is {date.today()}.
+- When your answer draws on Canadian mortgage regulations (Interest Act compounding, OSFI B-20, \
+CMHC rules, prepayment penalties), cite the relevant rule so the homeowner understands the basis.
 
-{context}"""
+{context}{rag_section}"""
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Session state: chat history
@@ -252,7 +272,15 @@ if "ai_messages" not in st.session_state:
 # ─────────────────────────────────────────────────────────────────────────────
 # Sidebar: controls + suggested prompts
 # ─────────────────────────────────────────────────────────────────────────────
+# RAG status badge in sidebar
 with st.sidebar:
+    if st.session_state.get("rag_ok"):
+        st.success("🧠 Knowledge base active", icon="✅")
+    else:
+        err = st.session_state.get("rag_err", "")
+        if err:
+            st.warning(f"Knowledge base unavailable: {err}", icon="⚠️")
+
     st.subheader("💡 Try asking")
     prompts = [
         "What's my current outstanding balance and how much equity have I built?",
@@ -307,7 +335,28 @@ if trigger and st.session_state["ai_messages"]:
     import anthropic
 
     client = anthropic.Anthropic(api_key=api_key)
-    system = _system_prompt()
+
+    # Extract the latest user query for RAG retrieval
+    latest_query = ""
+    for m in reversed(st.session_state["ai_messages"]):
+        if m["role"] == "user" and isinstance(m.get("content"), str):
+            latest_query = m["content"]
+            break
+
+    system = _system_prompt(latest_query)
+
+    # Show RAG sources in sidebar if available
+    if latest_query and st.session_state.get("rag_ok"):
+        sources = retrieve_chunks_metadata(latest_query)
+        if sources:
+            with st.sidebar:
+                with st.expander("📚 Knowledge sources used", expanded=False):
+                    for s in sources:
+                        st.caption(
+                            f"**{s['title']}** ({s['category']})  "
+                            f"— relevance: {s['similarity']:.0%}"
+                        )
+
     messages = [
         m for m in st.session_state["ai_messages"]
         if isinstance(m.get("content"), str)
