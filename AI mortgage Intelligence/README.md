@@ -13,7 +13,7 @@ A personal mortgage decision-support tool built with **Python**, **Streamlit**, 
 
 ### Mortgage Setup
 - Enter your mortgage principal, start date, amortization period, lender, and payment day
-- Define multiple renewal terms (fixed or variable rate)
+- Define multiple renewal terms (fixed or variable rate), including a **first payment date** for capitalised interest periods
 - Record variable-rate changes within a term
 - Add one-time, monthly, and annual prepayments with optional end dates
 
@@ -36,8 +36,18 @@ A personal mortgage decision-support tool built with **Python**, **Streamlit**, 
 ### Amortization Schedule
 - Full month-by-month schedule (up to 360 rows)
 - Filter by term and year
-- Color-coded: green (actual) vs blue (projected)
+- Four color-coded row types:
+  - 🟡 **Amber** — Interest Adjustment Period (partial month at disbursement; balance unchanged)
+  - 🟠 **Orange** — Capitalised Interest Period (no payment collected; interest added to balance)
+  - 🟢 **Green** — Actual historical payments
+  - 🔵 **Blue** — Projected future payments
 - CSV export
+
+### AI Advisor (V3 + V4)
+- Natural language Q&A about your mortgage, powered by **Claude (claude-sonnet)**
+- Answers are grounded in your live amortization schedule, balance, rate history, and prepayments
+- **RAG pipeline**: retrieves the most relevant chunks from a curated Canadian mortgage knowledge base before each Claude call, so answers reflect Canadian-specific rules (stress test, CMHC, semi-annual compounding, prepayment privileges, etc.)
+- Sidebar shows which knowledge sources were used for each answer, with similarity scores
 
 ---
 
@@ -46,28 +56,33 @@ A personal mortgage decision-support tool built with **Python**, **Streamlit**, 
 ```
 AI mortgage Intelligence/
 ├── app/
-│   ├── main.py               # Home page / KPI summary
-│   ├── state.py              # Streamlit session state + schedule cache
+│   ├── main.py                 # Home page / KPI summary
+│   ├── state.py                # Streamlit session state + schedule cache
 │   └── pages/
-│       ├── 01_Setup.py       # Mortgage data entry
-│       ├── 02_Dashboard.py   # All 12 charts
-│       └── 03_Amortization.py# Full schedule table
+│       ├── 01_Setup.py         # Mortgage data entry
+│       ├── 02_Dashboard.py     # All 12 charts
+│       ├── 03_Amortization.py  # Full schedule table
+│       └── 04_AI_Advisor.py    # Claude AI chat + RAG
 ├── mortgage/
 │   ├── models/
-│   │   └── entities.py       # Dataclasses: Mortgage, MortgageTerm, events, schedule
+│   │   └── entities.py         # Dataclasses: Mortgage, MortgageTerm, events, schedule
 │   ├── engine/
-│   │   ├── amortization.py   # Core schedule generator (Actual/365, event-driven)
-│   │   ├── renewal.py        # Canadian semi-annual compounding PMT calculator
-│   │   └── analytics.py      # Prepayment impact, payment increase impact, YTD
+│   │   ├── amortization.py     # Core schedule generator (Actual/365, event-driven)
+│   │   ├── renewal.py          # PMT calculator (semi-annual + bank monthly_simple modes)
+│   │   └── analytics.py        # Prepayment impact, payment increase impact, YTD
+│   ├── ai/
+│   │   ├── knowledge.py        # 25 curated Canadian mortgage knowledge chunks
+│   │   └── retrieval.py        # ChromaDB + sentence-transformers RAG retrieval
 │   └── storage/
-│       ├── database.py       # SQLAlchemy Core table definitions + engine
-│       └── repository.py     # Repository pattern — all DB reads/writes
+│       ├── database.py         # SQLAlchemy Core table definitions + engine
+│       └── repository.py       # Repository pattern — all DB reads/writes
 ├── tests/
-│   ├── test_engine.py        # 35 amortization engine tests
-│   └── test_storage.py       # 38 repository/storage tests
-├── data/                     # SQLite database (gitignored)
+│   ├── test_engine.py          # Amortization engine tests
+│   └── test_storage.py         # Repository/storage tests
+├── data/                       # SQLite database (gitignored)
+├── .env                        # ANTHROPIC_API_KEY (gitignored)
 ├── requirements.txt
-├── run.bat                   # Windows launcher
+├── run.bat                     # Windows launcher
 └── README.md
 ```
 
@@ -83,12 +98,20 @@ monthly_rate = (1 + annual_rate / 2) ^ (1/6) - 1
 PMT = principal × monthly_rate / (1 − (1 + monthly_rate) ^ −n)
 ```
 
+Some lenders compute the payment using `rate / 12` (simple monthly). The engine supports both via the `compounding` parameter — use `"monthly_simple"` to match your bank's statement exactly.
+
 ### Actual/365 Day-Count
 Interest accrues daily using actual calendar days between payments:
 
 ```
 interest = balance × (annual_rate / 365) × actual_days
 ```
+
+### Interest Adjustment Period (IAD)
+When the disbursement date doesn't fall on the regular payment day, a partial first month accrues interest without a payment. This is recorded as an amber row with no balance change.
+
+### Capitalised Interest Period
+When a lender collects interest at closing and the first regular payment is deferred beyond the first full month, each interim month accrues interest that is added to the outstanding balance (the balance grows). These are recorded as orange rows. Set the **First Payment Date** on a term to model this.
 
 ### Event-Driven Engine
 The amortization engine is built around an event log:
@@ -102,17 +125,39 @@ The lender's annual prepayment limit (default 20% of original principal) is enfo
 
 ---
 
+## 🤖 RAG Knowledge Base (V4)
+
+The AI Advisor uses a **Retrieval-Augmented Generation** pipeline to answer Canadian mortgage questions accurately:
+
+- **25 knowledge chunks** across 8 categories: interest calculation, prepayment rules, qualification (OSFI B-20 stress test, GDS/TDS), CMHC insurance, renewal & porting, variable rate mortgages, government programs (FHSA, RRSP HBP, FTHB tax credit), and strategy
+- **Embedding model**: `all-MiniLM-L6-v2` via `sentence-transformers`
+- **Vector store**: ChromaDB in-memory with cosine similarity
+- On each query, the top-4 most relevant chunks are injected into Claude's system prompt alongside your live mortgage data
+
+---
+
 ## 🚀 Getting Started
 
 ### Prerequisites
 - Python 3.11+
 - pip
+- An [Anthropic API key](https://console.anthropic.com/) (for the AI Advisor)
 
 ### Install dependencies
 
 ```bash
 pip install -r requirements.txt
 ```
+
+### Configure AI (optional — required for AI Advisor only)
+
+Create a `.env` file in the project root:
+
+```
+ANTHROPIC_API_KEY=your-key-here
+```
+
+This file is gitignored and never committed.
 
 ### Run the app
 
@@ -131,10 +176,11 @@ The app opens at `http://localhost:8501`.
 
 ### First-time setup
 1. Go to **Setup → Mortgage Details** and save your mortgage.
-2. Go to **Setup → Terms** and add your renewal terms.
+2. Go to **Setup → Terms** and add your renewal terms. If your first payment was deferred (capitalised interest), set the **First Payment Date**.
 3. Go to **Setup → Rate Changes** to record variable-rate changes (if applicable).
 4. Go to **Setup → Prepayments** to add any lump-sum or recurring prepayments.
 5. View your **Dashboard** and **Amortization Schedule**.
+6. Ask questions in the **AI Advisor**.
 
 ---
 
@@ -145,7 +191,7 @@ cd "AI mortgage Intelligence"
 python -m pytest tests/ -v
 ```
 
-73 tests covering the amortization engine, renewal calculator, analytics, and storage layer.
+Tests cover the amortization engine, renewal calculator, analytics, and storage layer.
 
 ---
 
@@ -155,8 +201,8 @@ python -m pytest tests/ -v
 |---------|---------|
 | ✅ V1 | Core amortization engine + Streamlit UI |
 | ✅ V2 | Dashboard with 12 charts + Amortization table |
-| 🔜 V3 | Claude AI integration — natural language Q&A about your mortgage |
-| 🔜 V4 | RAG pipeline — Canadian mortgage knowledge base |
+| ✅ V3 | Claude AI integration — natural language Q&A about your mortgage |
+| ✅ V4 | RAG pipeline — Canadian mortgage knowledge base + amortization alignment |
 | 🔜 V5 | Personal Financial Planning Assistant |
 
 ---
